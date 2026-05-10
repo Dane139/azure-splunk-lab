@@ -4,38 +4,32 @@
 
 *This project covers the automated cloud deployment of a Linux-based Splunk SIEM environment. To see the foundational, manual configuration that preceded this automation, check out* [Splunk SIEM & Log Analysis (Part 1)](https://github.com/Dane139/splunk-home-lab)
 
-## Project Objective
+## Implementation Overview
+This project demonstrates the automated deployment of a Splunk SIEM in Azure to monitor a complex hybrid-cloud environment. I transitioned from manual configuration to Infrastructure as Code (IaC) to bridge the telemetry gap between an on-premises home lab (VirtualBox) and cloud-native Azure infrastructure.
 
-The goal of this project was to automate the deployment of a cloud-based SIEM (Splunk Enterprise) using Infrastructure as Code (Terraform) and establish secure data ingestion pipelines from both on-premises (Hybrid) and cloud-native endpoints.
+### The Stack
+* **Cloud Provider:** Microsoft Azure
+* **IaC Tool:** Terraform
+* **SIEM:** Splunk Enterprise (Indexer/Search Head)
+* **Log Agents:** Splunk Universal Forwarder (UF)
+* **OS:** Ubuntu 22.04 (SIEM), Windows Server 2025 (Endpoints)
 
-## 🛠️ Environment & Technologies
-
-- **Cloud Provider:** Microsoft Azure
-- **Infrastructure as Code (IaC):** Terraform
-- **SIEM:** Splunk Enterprise (Hosted on Ubuntu Linux VM)
-- **Log Agents:** Splunk Universal Forwarder
-- **Endpoints:**
-    - Windows Server (On-Premises / VirtualBox)
-    - Windows Server (Cloud-Native / Azure Active Directory Domain Joined)
-- **Networking:** Azure Virtual Networks (VNet), VNet Peering, Network Security Groups (NSG)
+![Architecture](./assets/splunk-thumbnail.jpg)
 
 ---
 
-## Phase 1: Automated Infrastructure Provisioning
 
-The foundation of this project was built using Terraform to ensure a repeatable, scalable deployment. Executing the initial configuration successfully provisioned the core networking components, security groups, and the Linux VM hosting the Splunk Indexer.
+## Technical Architecture
+
+### 1. The Multi-Site Pipeline
+* **Hybrid Link:** Configured secure ingestion (Port 9997) from an on-premises Windows Server across the public internet. Access was hardened via Terraform NSG rules to allow-list only my specific home public IP.
+* **Private Bridge:** Utilized Azure VNet Peering to establish a private ingestion path for cloud-native VMs, keeping sensitive telemetry off the public internet and reducing data egress costs.
+
+### 2. Infrastructure as Code (IaC) Logic
+* **Network Security Groups:** Refactored HCL to support a "Dual-Path" ingestion model, whitelisting both Public and Internal VNet subnets.
+* **Automation:** Managed the entire compute and networking lifecycle through Terraform, ensuring that the environment is repeatable and idempotent.
 
 ![Terraform Apply Output](assets/image.png)
-
-Successful Terraform apply output demonstrating the automated provisioning of 10 Azure resources and the dynamic output of critical connection strings (Private IP, SSH access, and Web UI URL).
-
----
-
-## Phase 2: Hybrid-Cloud Logging Pipeline
-
-To simulate a real-world enterprise environment, I architected a hybrid-cloud logging pipeline. I successfully configured a Splunk Universal Forwarder on an on-premises Windows Server (VirtualBox) to ship encrypted event data across the public internet to the Azure-hosted Splunk Indexer.
-
-**Challenge - NSG Refactoring:** The initial Terraform deployment utilized a strict Network Security Group (NSG) that blocked all external traffic. I modified the Terraform code to explicitly allow-list my home router's public IP, ensuring secure ingestion on port 9997 while maintaining a 'Deny-All' posture for the rest of the internet.
 
 ![Universal Forwarder Status](assets/1BCCA685-FF68-400A-BB62-471B4D5D4E61.png)
 
@@ -45,7 +39,7 @@ To simulate a real-world enterprise environment, I architected a hybrid-cloud lo
 
 ---
 
-## Phase 3: Pure Cloud Pipeline via VNet Peering
+## 3. Pure Cloud Pipeline via VNet Peering
 
 After securing the hybrid link, I established a cloud-native ingestion pipeline for an existing Azure Windows Server. Instead of routing traffic over the public internet, I utilized **Azure VNet Peering**.
 
@@ -57,7 +51,7 @@ After securing the hybrid link, I established a cloud-native ingestion pipeline 
 
 ---
 
-## Phase 4: Validating Security Telemetry (Threat Hunting)
+## 4. Validating Security Telemetry (Threat Hunting)
 
 With the infrastructure pipelines established, I manually configured the Universal Forwarder `inputs.conf` files via the CLI to capture Windows Security Events. To validate the pipeline, I simulated authentication events and monitored standard network logons.
 
@@ -100,6 +94,13 @@ disabled = 0
 
 ---
 
+## Enterprise Scaling Roadmap
+1. **Splunk Deployment Server:** Transition from manual CLI configuration of forwarders to a centralized Deployment Server for mass-scale management.
+2. **Managed Identities:** Use Azure Managed Identity for Terraform state storage and Indexer authentication, eliminating the need for local credentials.
+3. **SOAR Integration:** Implement **Azure Logic Apps** to automate incident response (e.g., auto-blocking an IP in the NSG upon Splunk brute-force detection).
+
+---
+
 ## Appendix: Real-World Challenges & Resolutions
 
 Building a custom hybrid-cloud architecture rarely works perfectly on the first `terraform apply`. Here are the primary technical hurdles I encountered and resolved:
@@ -115,3 +116,5 @@ Building a custom hybrid-cloud architecture rarely works perfectly on the first 
 **3. Simulating Threat Intelligence (NLA Filtering)**
 - **The Issue:** While attempting to generate failed logon telemetry (Event ID 4625) via RDP brute-forcing, the logs were not appearing in Splunk.
 - **The Fix:** I discovered that Network Level Authentication (NLA) drops bad RDP requests before the local security log processes them. I pivoted my threat hunt to successfully capture Type 3 (Network) and Type 10 (Interactive) Administrator logons via Event ID 4624, proving the SIEM's operational readiness.
+
+**[View the Terraform Blueprints](./main.tf)**
